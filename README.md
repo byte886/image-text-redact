@@ -9,7 +9,8 @@
 ## 目录
 
 - `SKILL.md`：技能入口与路由
-- `references/`：按需细读的参考文档
+- `references/usage.md`：路线 A/B 命令与旗标、IPv4 歧义、操作流程
+- `references/sensitive-words.md`：敏感词分类词库模板与扩词方法
 - `scripts/`：随技能分发的可执行脚本
 
 ## 许可
