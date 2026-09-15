@@ -15,11 +15,13 @@ compatibility: "仅在 macOS(Darwin) 实测可用；Windows/Linux 未适配。�
 
 ## 脚本：`scripts/redact.py`（核心只用标准库，任意 python3 可跑）
 
+> 下文统一先设 `SKILL_DIR="$HOME/Doubao/skills/image-text-redact"`（双机家目录名不同，用 `$HOME` 派生、不写死用户名），脚本以 `"$SKILL_DIR/scripts/..."` 调用，避免因当前目录不在技能内而找不到脚本。
+
 ### 路线 A（首选）：源文本等长替换
 
 ```bash
 # words.txt：每行一个敏感词，# 开头注释，长词/组合词放前面
-python3 scripts/redact.py 原稿.md --words-file words.txt --word 额外词 --png
+python3 "$SKILL_DIR/scripts/redact.py" 原稿.md --words-file words.txt --word 额外词 --png
 ```
 
 - 自动等长替换：一个汉字/字符替换成一个 `█`，**位置和排版完全不变，零残字**；
@@ -30,7 +32,7 @@ python3 scripts/redact.py 原稿.md --words-file words.txt --word 额外词 --pn
 ### 路线 B（兜底）：只有位图
 
 ```bash
-python3 scripts/redact.py --image 原图.png -o 脱敏图.png --words-file words.txt
+python3 "$SKILL_DIR/scripts/redact.py" --image 原图.png -o 脱敏图.png --words-file words.txt
 ```
 
 - 调同目录 `scripts/ocr.swift`（macOS 自带 Vision，`swift` 直接运行，无需编译）逐行定位，命中处高斯模糊+不透明色块；
