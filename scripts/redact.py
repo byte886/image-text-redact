@@ -18,6 +18,7 @@
 词表文件格式：每行一个词，# 开头为注释，空行忽略；组合词/长词放前面。
 """
 import argparse
+import math
 import os
 import re
 import shutil
@@ -28,12 +29,16 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # ----------------------- 通用 PII（真正跨场景普适） ----------------------- #
+# IPv4 段 0-255；前后用边界约束：不接字母/点（放过 v1.2.3.4 这类带前缀版本号、
+# 1.2.3.4.5 这类五段号）。注意：独立出现且每段都 <=255 的四段版本号（如 2.0.1.5）
+# 与 IP 形态完全相同、无法机器区分，需要时给版本号保留 v 前缀，或写进说明人工核对。
+_OCTET = r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
 PII_PATTERNS = [
     ("身份证", re.compile(r"(?<![0-9Xx])\d{17}[0-9Xx](?![0-9Xx])")),
     ("手机号", re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")),
     ("银行卡", re.compile(r"(?<!\d)\d{16,19}(?!\d)")),
     ("邮箱", re.compile(r"[A-Za-z0-9_.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")),
-    ("IPv4", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
+    ("IPv4", re.compile(r"(?<![\w.])" + _OCTET + r"(?:\." + _OCTET + r"){3}(?![\w.])(?!\.\d)")),
 ]
 
 BROWSER_CANDIDATES = [
@@ -162,14 +167,72 @@ def _md_to_html_body(md: str):
     return "\n".join(html)
 
 
+def _disp_width(text: str, font: float) -> float:
+    """估算一行文本的显示宽度：CJK/全角按 1em，ASCII 按 0.55em。"""
+    return sum(font if ord(ch) > 0x2E7F else font * 0.55 for ch in text)
+
+
+def estimate_height(md: str, width: int) -> int:
+    """按实际折行估算长图高度，宁高勿裁（底部留白可接受、内容被裁不可接受）。
+
+    与 _md_to_html_body 支持的极简 Markdown 子集（标题/引用/列表/表格/段落）对应。
+    """
+    cw = max(width - 44, 200)  # body 左右各 22px padding 后的内容宽
+
+    def wrapped(text, font, line_h):
+        return max(1, math.ceil(_disp_width(text, font) / cw)) * line_h
+
+    h = 24
+    lines = md.splitlines()
+    i = 0
+    while i < len(lines):
+        s = lines[i].strip()
+        if not s:
+            h += 10
+            i += 1
+        elif s.startswith("# "):
+            h += wrapped(s[2:], 30, 40) + 18
+            i += 1
+        elif s.startswith("## "):
+            h += wrapped(s[3:], 24, 33) + 14
+            i += 1
+        elif s.startswith("### "):
+            h += wrapped(s[4:], 20, 28) + 10
+            i += 1
+        elif s.startswith("> "):
+            h += wrapped(s[2:], 19, 31) + 8
+            i += 1
+        elif s.startswith("- "):
+            while i < len(lines) and lines[i].strip().startswith("- "):
+                h += wrapped(lines[i].strip()[2:], 19, 31) + 8
+                i += 1
+        elif s.startswith("|"):
+            block = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                r = lines[i].strip()
+                if not re.match(r"^\|[\s:\-|]+\|?$", r):
+                    block.append(r)
+                i += 1
+            ncol = max((r.count("|") - 1) for r in block) if block else 1
+            colw = cw / max(ncol, 1)
+            for r in block:  # 表格行高取最高单元格的折行数
+                cells = r.strip().strip("|").split("|")
+                rows = max((math.ceil(_disp_width(c, 18) / max(colw - 18, 40))
+                            for c in cells), default=1)
+                h += max(rows, 1) * 26 + 18
+        else:
+            h += wrapped(s, 19, 31) + 8
+            i += 1
+    return int(min(max((h + 24) * 1.06, 400), 30000))  # 6% 安全余量
+
+
 def render_png(md: str, out_png: Path, width: int = 800, scale: int = 2):
     browser = find_browser()
     if not browser:
         print("[warn] 未找到 Chrome/Edge，跳过 PNG 渲染（文本脱敏文件已生成）。")
         return False
     body = _md_to_html_body(md)
-    n = max(len(md.splitlines()), 1)
-    height = min(max(n * 34 + 80, 400), 30000)
+    height = estimate_height(md, width)
     html = f"""<!doctype html><html lang="zh"><head><meta charset="utf-8"><style>
 *{{margin:0;padding:0;box-sizing:border-box;}}
 body{{width:{width}px;padding:24px 22px;font-family:-apple-system,"PingFang SC","Hiragino Sans GB","Heiti SC",sans-serif;color:#1f1f1f;background:#fff;}}
@@ -210,6 +273,7 @@ def _find_python_with_pillow():
     import glob
     home = str(Path.home())
     cands = [os.environ.get("PILLOW_PYTHON")]
+    # 豆包运行环境会话虚拟环境兜底（用 $HOME 派生，不写死家目录名；换布局时由下面 PATH 兜底）
     cands += glob.glob(f"{home}/Doubao/chats/*/*/.venv/bin/python")
     cands += glob.glob(f"{home}/Doubao/chats/*/*/*/.venv/bin/python")
     for name in ("python3", "python"):
