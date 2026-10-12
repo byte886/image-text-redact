@@ -1,4 +1,5 @@
 ---
+type: capability
 name: image-text-redact
 description: 给截图、长图、Markdown/文本里的敏感信息脱敏/打码后再对外分享。当用户要把图或文字里的手机号、身份证、银行卡、邮箱、姓名、地址或自定义敏感词糊掉/抹掉/打码/脱敏/发布前脱敏/长图敏感词替换时使用。首选对源文本做等长 █ 替换再重绘（零残字、不误伤邻字）；只有位图无源文本时才用 macOS Vision OCR 定位+色块兜底。内置手机号/身份证/银行卡/邮箱/IP 等 PII 正则，支持自定义词表，可渲染脱敏长图 PNG。
 compatibility: 仅在 macOS(Darwin) 实测可用；Windows/Linux 未适配。执行前先判平台(uname -s 返回 Darwin)，非 macOS 停止并告知需另行适配、不硬跑；将来补齐 Windows 后仍按平台分流并分别标注验证状态
